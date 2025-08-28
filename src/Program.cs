@@ -1,59 +1,147 @@
-//6 - task
+// 6 - Task
 
-//Bu qismda endi biz haqiqiy redis tizimini ko'ramiz. Yani Restoran misolini ko'rsak mijoz kelib o'tirdi va ofitsantga zakaz berdi va endi uni xotiraga saqlab qo'ydi.
-//Bundan avvalgi taskda siz echo yordamida unga buyruq berayotgan edi va u darhol esdan chqiayotgan edi. Endi esa bu narsa esidan chiqmedi yani zakasni girgitton 
-// daftariga yozib oladi. Masalan menga bu pitsa yoqdi, desa girgitton buni yozib oladi va. Keyinchalik menga zakasni keltr deb GET desa zakasni qaytarib oladi. 
-
-using System.Threading.Tasks;
-
-TcpListener server = new TcpListener(IPAddress.Any, 6734);
-
+TcpListener server = new TcpListener(IPAddress.Any, 6379);
 server.Start();
 
-while (true)
-{
-    var client = server.AcceptSocket();
+while (true) {
+  TcpClient client = server.AcceptTcpClient(); // wait for client
 
-    Task.Run(() => SetAndGet(client));
+  _tasks.Add(HandleClientAsync(client)); // handle client in background
 }
 
-static async Task SetAndGet(TcpClient client)
-{
-    Dictionary<string, string> storage = new Dictionary<string, string>();
+public partial class Program {
+  delegate Task AsyncCommandHandler(Stream stream, string msg,
+                                    CancellationToken cancellation);
 
-    while (client.Connected)
-    {
-        var buffer = new byte[1024];
+  static readonly byte[] PONG_RESPONSE = Encoding.UTF8.GetBytes("+PONG\r\n");
+  static readonly byte[] OK_RESPONSE = Encoding.UTF8.GetBytes("+OK\r\n");
+  static readonly byte[] NULL_RESPONSE = Encoding.UTF8.GetBytes("$-1\r\n");
 
-        int bytes = client.Client.ReceivedAsync(buffer);
+  static readonly Dictionary<string, AsyncCommandHandler> COMMANDS =
+      new(StringComparer.OrdinalIgnoreCase) { { "PING", PingCommandAsync },
+                                              { "ECHO", EchoCommandAsync },
+                                              { "SET", SetCommandAsync },
+                                              { "GET", GetCommandAsync } };
 
-        var requestData = Encoding.ASCII.GetString(buffer).Split("\n\r");
+  static readonly Dictionary<string, string> VALUES = new();
 
-        string responseString = "";
+  static readonly List<Task> _tasks = new List<Task>();
 
-        if (requestData.Length > 2)
-        {
-            var request = requestData[2].ToLower();
+  static async Task HandleClientAsync(TcpClient client) {
+    using CancellationTokenSource src = new CancellationTokenSource();
 
-            switch (request)
-            {
-                case "ping":
-                    responseString = "+PONG";
-                    break;
-                case "echo":
-                    responseString = $"${requestData[4].Length}\r\n{requestData[4]}\r\n";
-                    break;
-                case "set":
-                    storage.Add(requestData[4], requestData[6]);
-                    responseString = "+Ok\n\r";
-                    break;
-                case "get":
-                    string data = storage(requestData[4]);
-                    responseString = $"{data.Length}\n\r{data}\n\r";
-                    break;
+    CancellationToken token = src.Token;
 
-            }
+    using Stream stream = client.GetStream();
+
+    StringBuilder sb = new StringBuilder();
+
+    byte[] buffer = ArrayPool<byte>.Shared.Rent(100);
+    char[] chars = ArrayPool<char>.Shared.Rent(buffer.Length);
+
+    while (!token.IsCancellationRequested && client.Connected) {
+      int bytesRead = await stream.ReadAsync(buffer, token);
+
+      while (!token.IsCancellationRequested && bytesRead > 0) {
+        int charsWritten =
+            Encoding.UTF8.GetChars(buffer, 0, bytesRead, chars, 0);
+
+        sb.Append(chars, 0, charsWritten);
+
+        if (sb[^2] == '\r' && sb[^1] == '\n') {
+          sb.Length -= 2;
+
+          string msg = sb.ToString();
+
+          string[] parts = msg.Split("\r\n", 5);
+
+          string cmd = parts[2];
+
+          Console.WriteLine($"Length: {parts.Length}, Command: {cmd}");
+
+          string arg = parts.Length >= 5 ? parts[4] : string.Empty;
+
+          await COMMANDS[cmd].Invoke(stream, arg, token);
+
+          sb.Clear();
         }
-        await client.Client.SendAsync(Encoding.UTF8.GetBytes(responseString));
+
+        bytesRead = await stream.ReadAsync(buffer, token);
+      }
     }
+
+    src.Cancel();
+
+    ArrayPool<byte>.Shared.Return(buffer, true);
+    ArrayPool<char>.Shared.Return(chars, true);
+
+    client.Dispose();
+  }
+
+  static async Task PingCommandAsync(Stream stream, string arg,
+                                     CancellationToken cancellation) {
+    await stream.WriteAsync(PONG_RESPONSE, cancellation);
+  }
+
+  static async Task EchoCommandAsync(Stream stream, string arg,
+                                     CancellationToken cancellation) {
+    byte[] response = Encoding.UTF8.GetBytes($"${arg.Length}\r\n{arg}\r\n");
+
+    await stream.WriteAsync(response, cancellation);
+  }
+
+  static async Task SetCommandAsync(Stream stream, string arg,
+                                    CancellationToken cancellation) {
+    Console.WriteLine($"SET {arg}");
+
+    string[] parts = arg.Split("\r\n", 2);
+
+    string key = parts[0];
+
+    string value = parts[1];
+
+    ReadOnlySpan<char> valueSpan = value.AsSpan();
+
+    // *NUM indicates additional arguments other than KEY VALUE
+    if (valueSpan.Count('$') > 1) {
+      string[] valueParts = value.Split("\r\n");
+
+      value = $"{valueParts[0]}\r\n{valueParts[1]}";
+
+      int length = valueParts.Length;
+
+      for (int i = 0; i < length; i++) {
+        string argument = valueParts[i];
+
+        if (argument.Equals("px", StringComparison.OrdinalIgnoreCase)) {
+          int milliseconds = int.Parse(valueParts[i + 2]);
+
+          Console.WriteLine($"EXPIRY: {milliseconds}ms");
+
+          _tasks.Add(ClearKeyAfterAsync(milliseconds, key));
+        }
+      }
+    }
+
+    VALUES[key] = $"{value}\r\n";
+
+    await stream.WriteAsync(OK_RESPONSE, cancellation);
+  }
+
+  static async Task GetCommandAsync(Stream stream, string arg,
+                                    CancellationToken cancellation) {
+    Console.WriteLine($"GET {arg}");
+
+        byte[] response = VALUES.TryGetValue(arg, out string? value)
+            ? Encoding.UTF8.GetBytes(value) 
+            : NULL_RESPONSE;
+
+        await stream.WriteAsync(response, cancellation);
+  }
+
+  static async Task ClearKeyAfterAsync(int milliseconds, string key) {
+    await Task.Delay(milliseconds);
+
+    VALUES.Remove(key);
+  }
 }
