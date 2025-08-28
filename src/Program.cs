@@ -1,33 +1,36 @@
-//Task 3
+// Task 4
 
-//Xo'sh bu task avvalgisidan biroz farq qiladi. Avval mijoz kelib faqat ishlayapti derdi va ketar edi. Endi esa mijoz keladi va bir necha savollarni 
-//beradi, va bir xil javob oladi yani Pong Pong. Avvalgi holatda biz yozgan code bir necha javob bera olmasdi. Endi esa javob bera oladi
+//Restoranimizni bu qismi avvalgisidan biroz farq qiladi.
+//Avval bir mijoz bir nechta "zakaslar" qilgan bo'lsa, bu safar endi Restoranimiz kengaydii va ko'p mijozlar kelishni boshladi
+//Bu task maqsadi avval bir mijozni bir nechta so'rovlariga javob bergan bo'lsak endi bir necha mijozlarni bir necha so'rovlariga javob berishimiz kerak
 
-Console.WriteLine("Mijoz va restaurant muloqoti pastda ko'rindadi: ");
+Console.WriteLine("Mijoz va ofitsant bilan bo'lgan muloqot bu yerda aks etadi: ");
 
-TcpListener server = new TcpListener(IPAddress.Any, 6739);
+TcpListener server = new TcpListener(IPAddress.Any, 6732);
 server.Start();
-
-var client = server.AcceptSocket();
 
 while (true)
 {
-    var suhbatQutisi = new byte[1024];
-    var qabulQilinganHabar = client.ReceiveAsync(suhbatQutisi, SocketFlags.None);
-    var response = Encoding.UTF8.GetString(suhbatQutisi, 0, qabulQilinganHabar);
+    var client = server.AcceptSocket();
 
-    var suffix = "\r\n";
 
-    if (response.IndexOf(suffix) >= 0)
+}
+
+static void MultipleClient(TcpClient client)
+{
+    var stream = client.GetStream();
+
+    while (client.Connected)
     {
-        Console.WriteLine($"Mijoz habari qabul qilindi: \"{response.Replace(suffix, "")}");
+        var muloqotQutisi = new byte[1024];
+        var mijozSoroviOqish = stream.Read(muloqotQutisi, 0, muloqotQutisi.Length);
+        var mijozSorovi = Encoding.UTF8.GetString(muloqotQutisi, 0, mijozSorovi);
 
-        var pong = "+PONG" + suffix;
+        var javob = "+PONG\n\r";
 
-        var sendingBytes = Encoding.UTF8.GetString(pong);
+        var responseByte = Encoding.UTF8.GetBytes(responseByte);
 
-        await client.SendAsync(sendingBytes, SocketFlag.None);
-
-        Console.WriteLine($"Habar mijozga jo'natildi: \"{pong.Replace(suffix, "")}\"");
+        stream.Write(responseByte, 0, responseByte.Length);
     }
+    client.Console();
 }
