@@ -1,52 +1,59 @@
-// Task 5
+//6 - task
 
-//Shu paytgacha bizni Redis restaurant imiz mijozlarni qabul qilayotgan edi. Lekin 1 - 4 taskga cha, bizni ishchilarimiz faqat har qanday mijoz
-//soroviga PONG deb javob berayotgan edi. Hozirgi restoranimiz turli mijozlarga bir paytda ham javob bera olayapti. 
-
-//Bu qisimda, biz endi biroz yangilik kiritamiz. Yani biz mijozlar qo'liga menu beramiz va buyurtma qila oladi, 
-//va hizmatkorlar esa bu buyurtmani qaytaradi. 
+//Bu qismda endi biz haqiqiy redis tizimini ko'ramiz. Yani Restoran misolini ko'rsak mijoz kelib o'tirdi va ofitsantga zakaz berdi va endi uni xotiraga saqlab qo'ydi.
+//Bundan avvalgi taskda siz echo yordamida unga buyruq berayotgan edi va u darhol esdan chqiayotgan edi. Endi esa bu narsa esidan chiqmedi yani zakasni girgitton 
+// daftariga yozib oladi. Masalan menga bu pitsa yoqdi, desa girgitton buni yozib oladi va. Keyinchalik menga zakasni keltr deb GET desa zakasni qaytarib oladi. 
 
 using System.Threading.Tasks;
 
-Console.WriteLine("Mijoz va ofitsant muloqoti shu yerda: ");
-
 TcpListener server = new TcpListener(IPAddress.Any, 6734);
+
 server.Start();
 
 while (true)
 {
     var client = server.AcceptSocket();
 
-    Task.Run(() => EchoCommand(client));
+    Task.Run(() => SetAndGet(client));
 }
 
-static async Task EchoCommand(TcpClient client)
+static async Task SetAndGet(TcpClient client)
 {
-    Dictionary<string, string> storage = [];
+    Dictionary<string, string> storage = new Dictionary<string, string>();
 
     while (client.Connected)
     {
-        byte[] buffer = new byte[1024];
+        var buffer = new byte[1024];
 
-        int bytes = await client.Client.ReceiveAsync(buffer);
+        int bytes = client.Client.ReceivedAsync(buffer);
 
-        var requestedData = Encoding.UTF8.GetString(buffer).Split("\n\r");
+        var requestData = Encoding.ASCII.GetString(buffer).Split("\n\r");
 
-        string responseMessage = "";
+        string responseString = "";
 
-        if (requestedData.Length > 2)
+        if (requestData.Length > 2)
         {
-            string request = requestedData[2].ToLower();
+            var request = requestData[2].ToLower();
 
             switch (request)
             {
                 case "ping":
-                    responseMessage = "PONG";
+                    responseString = "+PONG";
+                    break;
                 case "echo":
-                    responseMessage = $"${requestedData[4].Length}\r\n{requestedData[4]}\r\n";
+                    responseString = $"${requestData[4].Length}\r\n{requestData[4]}\r\n";
+                    break;
+                case "set":
+                    storage.Add(requestData[4], requestData[6]);
+                    responseString = "+Ok\n\r";
+                    break;
+                case "get":
+                    string data = storage(requestData[4]);
+                    responseString = $"{data.Length}\n\r{data}\n\r";
+                    break;
+
             }
         }
-
-        await client.Client.SendAsync(Encoding.UTF8.GetBytes(responseMessage));
+        await client.Client.SendAsync(Encoding.UTF8.GetBytes(responseString));
     }
 }
