@@ -13,6 +13,7 @@ while (true)
 {
     var client = server.AcceptSocket();
 
+    Task(() => MultipleClient(client));
 
 }
 
