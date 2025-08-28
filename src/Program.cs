@@ -1,24 +1,33 @@
-//Task 2
+//Task 3
 
-//Bu taskda biz Redis ishlayotganini bilishimiz uchun kerak bo'ladigan PING commandni ishlatib ko'rishimiz kerak, va javob tarzida PONG jo'natsak bo'ladi
+//Xo'sh bu task avvalgisidan biroz farq qiladi. Avval mijoz kelib faqat ishlayapti derdi va ketar edi. Endi esa mijoz keladi va bir necha savollarni 
+//beradi, va bir xil javob oladi yani Pong Pong. Avvalgi holatda biz yozgan code bir necha javob bera olmasdi. Endi esa javob bera oladi
 
-//Hayotiy misolda esa
+Console.WriteLine("Mijoz va restaurant muloqoti pastda ko'rindadi: ");
 
-//Redis restaurant esa ishni boshladi, va biz eshik oldida hamma mijozlarga "xush kelibsiz, marahamat" deyish uchun ishchi yolladik. 
-//Bu taskda esa mijoz eshik yoniga keladi va so'raydi "Sizlar ishlayapsizlarmi" xodim esa so'rov nimaligiga etibor bermasdan "Biz ishlayapmiz
-// PONG nomli javob beradi"
-
-//Boshladik
-
-Console.WriteLine("Sizni mijoz bilan aloqangiz shu yerda ko'rinadi.");
 TcpListener server = new TcpListener(IPAddress.Any, 6739);
 server.Start();
 
 var client = server.AcceptSocket();
 
-string message = "+PONG\r\n";
+while (true)
+{
+    var suhbatQutisi = new byte[1024];
+    var qabulQilinganHabar = client.ReceiveAsync(suhbatQutisi, SocketFlags.None);
+    var response = Encoding.UTF8.GetString(suhbatQutisi, 0, qabulQilinganHabar);
 
-//bu code bizga inson yozilgan yozuvlarni protokol tushunadigan byte larga o'girib beradi. 
-byte[] data = Encoding.UTF8.GetBytes(message);
+    var suffix = "\r\n";
 
-client.Send(data);
+    if (response.IndexOf(suffix) >= 0)
+    {
+        Console.WriteLine($"Mijoz habari qabul qilindi: \"{response.Replace(suffix, "")}");
+
+        var pong = "+PONG" + suffix;
+
+        var sendingBytes = Encoding.UTF8.GetString(pong);
+
+        await client.SendAsync(sendingBytes, SocketFlag.None);
+
+        Console.WriteLine($"Habar mijozga jo'natildi: \"{pong.Replace(suffix, "")}\"");
+    }
+}
