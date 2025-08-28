@@ -1,37 +1,52 @@
-// Task 4
+// Task 5
 
-//Restoranimizni bu qismi avvalgisidan biroz farq qiladi.
-//Avval bir mijoz bir nechta "zakaslar" qilgan bo'lsa, bu safar endi Restoranimiz kengaydii va ko'p mijozlar kelishni boshladi
-//Bu task maqsadi avval bir mijozni bir nechta so'rovlariga javob bergan bo'lsak endi bir necha mijozlarni bir necha so'rovlariga javob berishimiz kerak
+//Shu paytgacha bizni Redis restaurant imiz mijozlarni qabul qilayotgan edi. Lekin 1 - 4 taskga cha, bizni ishchilarimiz faqat har qanday mijoz
+//soroviga PONG deb javob berayotgan edi. Hozirgi restoranimiz turli mijozlarga bir paytda ham javob bera olayapti. 
 
-Console.WriteLine("Mijoz va ofitsant bilan bo'lgan muloqot bu yerda aks etadi: ");
+//Bu qisimda, biz endi biroz yangilik kiritamiz. Yani biz mijozlar qo'liga menu beramiz va buyurtma qila oladi, 
+//va hizmatkorlar esa bu buyurtmani qaytaradi. 
 
-TcpListener server = new TcpListener(IPAddress.Any, 6732);
+using System.Threading.Tasks;
+
+Console.WriteLine("Mijoz va ofitsant muloqoti shu yerda: ");
+
+TcpListener server = new TcpListener(IPAddress.Any, 6734);
 server.Start();
 
 while (true)
 {
     var client = server.AcceptSocket();
 
-    Task(() => MultipleClient(client));
-
+    Task.Run(() => EchoCommand(client));
 }
 
-static void MultipleClient(TcpClient client)
+static async Task EchoCommand(TcpClient client)
 {
-    var stream = client.GetStream();
+    Dictionary<string, string> storage = [];
 
     while (client.Connected)
     {
-        var muloqotQutisi = new byte[1024];
-        var mijozSoroviOqish = stream.Read(muloqotQutisi, 0, muloqotQutisi.Length);
-        var mijozSorovi = Encoding.UTF8.GetString(muloqotQutisi, 0, mijozSorovi);
+        byte[] buffer = new byte[1024];
 
-        var javob = "+PONG\n\r";
+        int bytes = await client.Client.ReceiveAsync(buffer);
 
-        var responseByte = Encoding.UTF8.GetBytes(responseByte);
+        var requestedData = Encoding.UTF8.GetString(buffer).Split("\n\r");
 
-        stream.Write(responseByte, 0, responseByte.Length);
+        string responseMessage = "";
+
+        if (requestedData.Length > 2)
+        {
+            string request = requestedData[2].ToLower();
+
+            switch (request)
+            {
+                case "ping":
+                    responseMessage = "PONG";
+                case "echo":
+                    responseMessage = $"${requestedData[4].Length}\r\n{requestedData[4]}\r\n";
+            }
+        }
+
+        await client.Client.SendAsync(Encoding.UTF8.GetBytes(responseMessage));
     }
-    client.Console();
 }
