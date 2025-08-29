@@ -1,36 +1,44 @@
-// 6 - Task
+// 7 - Task
 
-TcpListener server = new TcpListener(IPAddress.Any, 6379);
+//Bu taskda biz Redis restaratimizni yanaham kengayganini va murakkabroq vazifalarni ham bajarayotganini ko'rishimiz mumkin. 
+//Avval ofitsant kelib mijozga faqat PONG javobi yani har qanday savolga shunday javob berardi. 
+//Keyin ofitsant mijoz aytgan so'rovni o'zini aytadigan bo'ldi. 
+//oxirgilarida esa mijoz aytgan zakaslarni note ga yozib oladigan bo'ldi. Keyin bu notlarni saqlaydigan bo'ldi.
+//Bu taskda esa biz endi bir nechta zakaslarni ham saqlab ola olish qobilyatini ishga tushuramiz
+
+Console.WriteLine("Mijoz va ofitsant muloqotini bu yerda ko'rishiz mumkin: ");
+
+TcpListener server = new TcpListener(IPAddress.Any, 6734);
+
 server.Start();
 
-while (true) {
-  TcpClient client = server.AcceptTcpClient(); // wait for client
+//bu bizga bie necha clientlarga xizmat ko'rsatishga yordam beradi. 
+while (true)
+{
+  TcpClient client = server.AcceptTcpClient();
 
-  _tasks.Add(HandleClientAsync(client)); // handle client in background
+  _task.Add(HandleClientAsync(client));
 }
 
-public partial class Program {
-  delegate Task AsyncCommandHandler(Stream stream, string msg,
-                                    CancellationToken cancellation);
-
+public partial class Program() {
+  delegate Task AsyncCommandHandler(Stream stream, string msg, CancellationToken cancellationToken);
   static readonly byte[] PONG_RESPONSE = Encoding.UTF8.GetBytes("+PONG\r\n");
   static readonly byte[] OK_RESPONSE = Encoding.UTF8.GetBytes("+OK\r\n");
-  static readonly byte[] NULL_RESPONSE = Encoding.UTF8.GetBytes("$-1\r\n");
-
-  static readonly Dictionary<string, AsyncCommandHandler> COMMANDS =
-      new(StringComparer.OrdinalIgnoreCase) { { "PING", PingCommandAsync },
-                                              { "ECHO", EchoCommandAsync },
-                                              { "SET", SetCommandAsync },
-                                              { "GET", GetCommandAsync } };
+  static readonly byte[] NULL_RESPONSE = Encoding.UTF8.GetBytes("+$-1\r\n");
+  static readonly Dictionary<string, AsyncCommandHandler> COMMANDS = new(StringComparer.OrdinalIgnoreCase) {
+    {"PING", PingCommandAsync},
+    {"ECHO", EchoCommandAsync},
+    {"SET", SetCommandAsync},
+    {"GET", GetCommandAsync},
+    {"RPUSH", RPushCommandAsync}
+  };
 
   static readonly Dictionary<string, string> VALUES = new();
-
-  static readonly List<Task> _tasks = new List<Task>();
+  static readonly List<Task> _task = new List<Task>();
 
   static async Task HandleClientAsync(TcpClient client) {
     using CancellationTokenSource src = new CancellationTokenSource();
-
-    CancellationToken token = src.Token;
+    CancellationToken token = src.Token();
 
     using Stream stream = client.GetStream();
 
@@ -39,12 +47,13 @@ public partial class Program {
     byte[] buffer = ArrayPool<byte>.Shared.Rent(100);
     char[] chars = ArrayPool<char>.Shared.Rent(buffer.Length);
 
-    while (!token.IsCancellationRequested && client.Connected) {
+    while (!token.IsCancellationRequested && client.Connected)
+    {
       int bytesRead = await stream.ReadAsync(buffer, token);
 
-      while (!token.IsCancellationRequested && bytesRead > 0) {
-        int charsWritten =
-            Encoding.UTF8.GetChars(buffer, 0, bytesRead, chars, 0);
+      while (!token.IsCancellationRequested && bytesRead > 0)
+      {
+        int charsWritten = Encoding.UTF8.GetChars(buffer, 0, bytesRead, chars, 0);
 
         sb.Append(chars, 0, charsWritten);
 
@@ -73,7 +82,7 @@ public partial class Program {
     src.Cancel();
 
     ArrayPool<byte>.Shared.Return(buffer, true);
-    ArrayPool<char>.Shared.Return(chars, true);
+    ArrayPool<byte>.Shared.Return(chars, true);
 
     client.Dispose();
   }
@@ -139,7 +148,46 @@ public partial class Program {
         await stream.WriteAsync(response, cancellation);
   }
 
-  static async Task ClearKeyAfterAsync(int milliseconds, string key) {
+  static async Task RPushCommandAsync(Stream stream, string arg, CancellationToken cancellation)
+  {
+    //if client savatchasi bo'sh bo'lsa
+    // bizga yangi list ochiladi
+    //agar savatcha bo'sh bo'lmasa eskisiga 1 ta yangi malumot qo'shiladi. 
+
+    string[] parts = arg.Split("\r\n", 2);
+
+    string[] key = parts[0];
+    string[] value = parts[1];
+
+    List<string> values;
+
+    if (VALUES.TryGetValue(key, out object? instance))
+    {
+      if (instance is List<string> list)
+      {
+        values = list;
+        values.Add(value);
+      }
+      else
+      {
+        throw new InvalidOperationException($"Key '{key}' already exists with a different type.");
+      }
+    }
+    else
+    {
+      values = new List<string> { parts[1] };
+
+      VALUES[key] = values;
+    }
+
+    int length = values.Count;
+
+    byte[] response = Encoding.UTF8.GetBytes($":{length}\r\n");
+
+    await stream.WriteAsync(response, cancellation);
+  }
+  static async Task ClearKeyAfterAsync(int milliseconds, string key)
+  {
     await Task.Delay(milliseconds);
 
     VALUES.Remove(key);
