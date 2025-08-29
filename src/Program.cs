@@ -1,4 +1,4 @@
-// 7 - Task
+// 8 - Task
 
 //Bu taskda biz Redis restaratimizni yanaham kengayganini va murakkabroq vazifalarni ham bajarayotganini ko'rishimiz mumkin. 
 //Avval ofitsant kelib mijozga faqat PONG javobi yani har qanday savolga shunday javob berardi. 
@@ -159,7 +159,7 @@ public partial class Program() {
     string[] parts = arg.Split("\r\n", 2);
 
     string[] key = parts[0];
-    string[] value = parts[1];
+    string[] valueParts = parts[1].Split("\r\n");
 
     List<string> values;
 
@@ -182,6 +182,12 @@ public partial class Program() {
       VALUES[key] = values;
     }
 
+    int valueLength = valueParts.Length;
+
+    for (int i = 0; i < valueLength; i+=2) {
+      string value = $"{valueParts[i]}\r\n{valueParts[i + 2]}\r\n";
+      values.Add(value);
+    }
     int length = values.Count;
 
     byte[] response = Encoding.UTF8.GetBytes($":{length}\r\n");
