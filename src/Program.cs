@@ -6,6 +6,8 @@
 //oxirgilarida esa mijoz aytgan zakaslarni note ga yozib oladigan bo'ldi. Keyin bu notlarni saqlaydigan bo'ldi.
 //Bu taskda esa biz endi bir nechta zakaslarni ham saqlab ola olish qobilyatini ishga tushuramiz
 
+//Just comment for test my github profile
+
 Console.WriteLine("Mijoz va ofitsant muloqotini bu yerda ko'rishiz mumkin: ");
 
 TcpListener server = new TcpListener(IPAddress.Any, 6734);
